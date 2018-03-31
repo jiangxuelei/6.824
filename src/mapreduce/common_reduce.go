@@ -1,5 +1,13 @@
 package mapreduce
 
+import (
+	"encoding/json"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+)
+
 func doReduce(
 	jobName string, // the name of the whole MapReduce job
 	reduceTask int, // which reduce task this is
@@ -44,4 +52,79 @@ func doReduce(
 	//
 	// Your code here (Part I).
 	//
+	kvs := SortKV{}
+	var kv KeyValue
+	for m := 0; m < nMap; m++ {
+		reduceName := reduceName(jobName, m, reduceTask)
+		f, _ := os.Open(reduceName)
+		enc := json.NewDecoder(f)
+
+		for {
+			if e := enc.Decode(&kv); e == nil {
+				kvs = append(kvs, kv)
+			} else {
+				break
+			}
+		}
+		f.Close()
+	}
+	sort.Sort(kvs)
+	fristKey := ""
+	tmpList := make([]string, 0)
+	for _, kv := range kvs {
+		if strings.Compare(fristKey, "") == 0{
+			fristKey = kv.Key
+			tmpList = append(tmpList, kv.Value)
+		} else if strings.Compare(fristKey, kv.Key) == 0{
+			tmpList = append(tmpList, kv.Value)
+		} else {
+			output := reduceF(fristKey, tmpList)
+			writeOutputFile(mergeName(jobName, reduceTask), fristKey, output)
+			fristKey = kv.Key
+			tmpList = append(make([]string, 0), kv.Value)
+		}
+	}
+	if len(tmpList) > 0 {
+		output := reduceF(fristKey, tmpList)
+		writeOutputFile(mergeName(jobName, reduceTask), fristKey, output)
+		fristKey = kv.Key
+		tmpList = append(make([]string, 0), kv.Value)
+	}
+}
+
+func writeOutputFile(filename string, key, content string) {
+	f := getFile(filename)
+	enc := json.NewEncoder(f)
+	enc.Encode(KeyValue{Key:key, Value:content})
+	f.Close()
+}
+func getFile(filename string) (f *os.File) {
+	if checkFileIsExist(filename) { //如果文件存在
+		f, _ = os.OpenFile(filename, os.O_APPEND|os.O_RDWR, 0777) //打开文件
+	} else {
+		f, _ = os.Create(filename) //创建文件
+	}
+	return f
+}
+
+func checkFileIsExist(filename string) bool {
+	var exist = true
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		exist = false
+	}
+	return exist
+}
+
+type SortKV []KeyValue
+
+func (c SortKV) Less(i, j int) bool {
+	a,_ := strconv.Atoi(c[i].Key)
+	b,_ := strconv.Atoi(c[i].Value)
+	return  a < b
+}
+func (c SortKV) Len() int {
+	return len(c)
+}
+func (c SortKV) Swap(i, j int) {
+	c[i], c[j] = c[j],c[i]
 }
