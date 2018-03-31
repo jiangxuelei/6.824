@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -118,9 +117,7 @@ func checkFileIsExist(filename string) bool {
 type SortKV []KeyValue
 
 func (c SortKV) Less(i, j int) bool {
-	a,_ := strconv.Atoi(c[i].Key)
-	b,_ := strconv.Atoi(c[i].Value)
-	return  a < b
+	return  c[i].Key < c[j].Key
 }
 func (c SortKV) Len() int {
 	return len(c)
