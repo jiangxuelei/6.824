@@ -3,7 +3,6 @@ package mapreduce
 import (
 	"fmt"
 	"sync"
-	"time"
 )
 
 //
@@ -35,38 +34,30 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	// Your code here (Part III, Part IV).
 	//
 	var wg sync.WaitGroup
-	var mu = new(sync.Mutex)
-	srvs := make([]string, 0)
 
-	go func() {
-		for srv := range registerChan {
-			mu.Lock()
-			srvs = append(srvs, srv)
-			mu.Unlock()
-		}
-	}()
+	for i := 0; i < ntasks; i++ {
+		wg.Add(1)
+		go func(taskNum int, nios int, phase jobPhase) {
+			defer wg.Done()
+			for {
+				var args DoTaskArgs
 
-	for k,v := range mapFiles {
+				worker := <- registerChan
+				args.JobName = jobName
+				args.File = mapFiles[taskNum]
+				args.Phase = phase
+				args.TaskNumber = taskNum
+				args.NumOtherPhase = nios
 
-		for ;; {
-			if len(srvs) <= 0 {
-				time.Sleep(1 * time.Millisecond)
-			} else {
-				break
+				ok := call(worker, "Worker.DoTask", &args, nil)
+				if ok {
+					go func() {
+						registerChan <- worker
+					}()
+					break
+				}
 			}
-		}
-		mu.Lock()
-		addr := srvs[0]; srvs = srvs[1:]
-		mu.Unlock()
-		args := DoTaskArgs{JobName: jobName, File: v, Phase: phase, TaskNumber: k, NumOtherPhase: n_other}
-		go func(addr string, args DoTaskArgs) {
-			wg.Add(1)
-			call(addr, "Worker.DoTask", args, nil)
-			mu.Lock()
-			srvs = append(srvs, addr)
-			mu.Unlock()
-			wg.Done()
-		}(addr, args)
+		}(i, n_other, phase)
 	}
 	wg.Wait()
 	fmt.Printf("Schedule: %v done\n", phase)
